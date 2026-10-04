@@ -1,0 +1,7 @@
+{
+  "VITE_AUTH_ENABLED": "false",
+  "VITE_GROK_EXTENSIONS": "0",
+  "deploy": {
+    "database": false
+  }
+}
