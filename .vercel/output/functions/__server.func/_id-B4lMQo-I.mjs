@@ -1,0 +1,765 @@
+import { i as __toESM } from "./_runtime.mjs";
+import { o as require_jsx_runtime, s as require_react } from "./_libs/@radix-ui/react-collection+[...].mjs";
+import { b as useNavigate, y as Link } from "./_libs/@tanstack/react-router+[...].mjs";
+import { _ as Camera, c as LoaderCircle, i as Square, m as ExternalLink, o as MonitorUp, s as Mic, t as X } from "./_libs/lucide-react.mjs";
+import { n as Route } from "./_ssr/router-BEOUVpOq.mjs";
+import { n as toast } from "./_libs/sonner.mjs";
+import { _ as useSession, c as formatClock, g as saveSession, l as formatDuration, m as platformLabel, n as Badge, o as cn, r as Button, t as AppShell, u as isEmbeddedBrowser } from "./_ssr/use-sessions-DQZyv5Hb.mjs";
+import { a as grabImageData, c as startDisplayCapture, d as transcribeFile, i as framesFromVideoFile, l as startLevelMonitor, n as fileToJpegDataUrl, o as produceBrief, r as frameToJpeg, s as sceneScore, t as LIVE_CHUNK_MS, u as startMicCapture } from "./_ssr/produce-brief-Bet0Zz6O.mjs";
+import { a as Textarea, n as FileDrop, o as fileHandoff, r as Label, s as speechLang, t as Card } from "./_ssr/languages-B8p-qoo8.mjs";
+import { n as Root, t as Indicator } from "./_libs/radix-ui__react-progress.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/_id-B4lMQo-I.js
+var import_react = /* @__PURE__ */ __toESM(require_react());
+var import_jsx_runtime = require_jsx_runtime();
+var Progress = import_react.forwardRef(({ className, value, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Root, {
+	ref,
+	className: cn("relative h-1.5 w-full overflow-hidden rounded-full bg-muted", className),
+	...props,
+	children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Indicator, {
+		className: "h-full w-full flex-1 bg-brand transition-transform duration-200 ease-out",
+		style: { transform: `translateX(-${100 - (value ?? 0)}%)` }
+	})
+}));
+Progress.displayName = Root.displayName;
+function speechSupported() {
+	if (typeof window === "undefined") return false;
+	return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+function startSpeechRecognition(lang, handlers) {
+	const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+	if (!Ctor) {
+		handlers.onError?.("Live captions need Chrome or Edge.");
+		return { stop: () => void 0 };
+	}
+	let stopped = false;
+	let rec = null;
+	const attach = () => {
+		if (stopped) return;
+		const r = new Ctor();
+		rec = r;
+		r.continuous = true;
+		r.interimResults = true;
+		r.lang = lang || "en-US";
+		r.maxAlternatives = 1;
+		r.onresult = (ev) => {
+			let interim = "";
+			let finals = "";
+			for (let i = ev.resultIndex; i < ev.results.length; i += 1) {
+				const res = ev.results[i];
+				const piece = res?.[0]?.transcript ?? "";
+				if (res?.isFinal) finals += `${piece} `;
+				else interim += piece;
+			}
+			const f = finals.trim();
+			if (f) handlers.onFinal(f);
+			handlers.onInterim(interim.trim());
+		};
+		r.onerror = (ev) => {
+			if (ev.error === "no-speech" || ev.error === "aborted") return;
+			if (ev.error === "not-allowed") handlers.onError?.("Microphone permission was blocked. Share the meeting tab and include audio.");
+		};
+		r.onend = () => {
+			if (!stopped) try {
+				attach();
+			} catch {}
+		};
+		try {
+			r.start();
+		} catch {}
+	};
+	attach();
+	return { stop: () => {
+		stopped = true;
+		try {
+			rec?.abort();
+		} catch {}
+		rec = null;
+	} };
+}
+function SessionPage() {
+	const { id } = Route.useParams();
+	const { session, ready } = useSession(id);
+	const navigate = useNavigate();
+	const [interim, setInterim] = (0, import_react.useState)("");
+	const [elapsed, setElapsed] = (0, import_react.useState)(0);
+	const [step, setStep] = (0, import_react.useState)("");
+	const [progress, setProgress] = (0, import_react.useState)(12);
+	const [previewOn, setPreviewOn] = (0, import_react.useState)(false);
+	const [notes, setNotes] = (0, import_react.useState)("");
+	const [level, setLevel] = (0, import_react.useState)(0);
+	const [captureKind, setCaptureKind] = (0, import_react.useState)(null);
+	const [embedded, setEmbedded] = (0, import_react.useState)(false);
+	const [sttPending, setSttPending] = (0, import_react.useState)(0);
+	const videoRef = (0, import_react.useRef)(null);
+	const captureRef = (0, import_react.useRef)(null);
+	const speechRef = (0, import_react.useRef)(null);
+	const meterRef = (0, import_react.useRef)(null);
+	const timerRef = (0, import_react.useRef)(null);
+	const shotTimerRef = (0, import_react.useRef)(null);
+	const lastFrameRef = (0, import_react.useRef)(null);
+	const lastShotRef = (0, import_react.useRef)(0);
+	const startedRef = (0, import_react.useRef)(false);
+	const sttChain = (0, import_react.useRef)(Promise.resolve());
+	const chunkStartRef = (0, import_react.useRef)(0);
+	const usedStt = (0, import_react.useRef)(false);
+	const interruptToast = (0, import_react.useRef)(false);
+	const wakeLockRef = (0, import_react.useRef)(null);
+	const transcriptRef = (0, import_react.useRef)(null);
+	const sessionRef = (0, import_react.useRef)(session);
+	sessionRef.current = session;
+	(0, import_react.useEffect)(() => {
+		if (session && !notes) setNotes(session.notes ?? "");
+	}, [session?.id]);
+	(0, import_react.useEffect)(() => {
+		setEmbedded(isEmbeddedBrowser());
+	}, []);
+	(0, import_react.useEffect)(() => {
+		const el = transcriptRef.current;
+		if (!el) return;
+		el.scrollTop = el.scrollHeight;
+	}, [session?.segments.length, interim]);
+	(0, import_react.useEffect)(() => {
+		if (!session) return;
+		if (session.status === "listening" && !captureRef.current) {
+			patch({ status: "setup" });
+			if (!interruptToast.current) {
+				interruptToast.current = true;
+				toast.message("Listening was interrupted. Start again to continue.");
+			}
+			return;
+		}
+		if (startedRef.current) return;
+		const file = fileHandoff.get(session.id);
+		if (file) {
+			startedRef.current = true;
+			fileHandoff.delete(session.id);
+			handleUpload(session, file);
+			return;
+		}
+		if (session.source === "transcript" && session.transcriptText.trim() && session.status === "setup") {
+			startedRef.current = true;
+			finishBrief(session, { durationMs: 0 });
+			return;
+		}
+		if (session.status === "processing" && session.transcriptText.trim()) {
+			startedRef.current = true;
+			finishBrief(session, {});
+		}
+	}, [session]);
+	(0, import_react.useEffect)(() => {
+		return () => {
+			teardown();
+		};
+	}, []);
+	(0, import_react.useEffect)(() => {
+		if (session?.status !== "listening") return;
+		const onLeave = (e) => {
+			e.preventDefault();
+			e.returnValue = "";
+		};
+		window.addEventListener("beforeunload", onLeave);
+		return () => window.removeEventListener("beforeunload", onLeave);
+	}, [session?.status]);
+	async function patch(update) {
+		const current = sessionRef.current;
+		if (!current) return current;
+		const next = {
+			...current,
+			...update
+		};
+		sessionRef.current = next;
+		await saveSession(next);
+		return next;
+	}
+	async function teardown() {
+		speechRef.current?.stop();
+		speechRef.current = null;
+		meterRef.current?.();
+		meterRef.current = null;
+		if (timerRef.current) window.clearInterval(timerRef.current);
+		if (shotTimerRef.current) window.clearInterval(shotTimerRef.current);
+		timerRef.current = null;
+		shotTimerRef.current = null;
+		if (wakeLockRef.current) {
+			await wakeLockRef.current.release().catch(() => void 0);
+			wakeLockRef.current = null;
+		}
+		if (captureRef.current) {
+			await captureRef.current.stop().catch(() => null);
+			captureRef.current = null;
+		}
+		setPreviewOn(false);
+		setCaptureKind(null);
+	}
+	function takeShot(important) {
+		const handle = captureRef.current;
+		const current = sessionRef.current;
+		if (!handle || !current) return;
+		if (current.screenshots.length >= 20) {
+			toast.message("Screenshot limit reached for this session.");
+			return;
+		}
+		const jpeg = frameToJpeg(handle.video, important ? .65 : .55, important ? 1100 : 960);
+		if (!jpeg) return;
+		const shot = {
+			id: crypto.randomUUID(),
+			t: Date.now() - (current.startedAt ?? Date.now()),
+			dataUrl: jpeg,
+			important
+		};
+		lastShotRef.current = Date.now();
+		patch({ screenshots: [...current.screenshots, shot] });
+	}
+	async function attachImage(file) {
+		const current = sessionRef.current;
+		if (!current) return;
+		if (current.screenshots.length >= 20) {
+			toast.message("Screenshot limit reached for this session.");
+			return;
+		}
+		const dataUrl = await fileToJpegDataUrl(file);
+		if (!dataUrl) {
+			toast.error("Could not read that image.");
+			return;
+		}
+		const shot = {
+			id: crypto.randomUUID(),
+			t: Date.now() - (current.startedAt ?? current.createdAt),
+			dataUrl,
+			caption: file.name.replace(/\.[^.]+$/, ""),
+			important: true
+		};
+		await patch({ screenshots: [...current.screenshots, shot] });
+		toast.success("Screenshot attached");
+	}
+	function removeShot(id) {
+		const current = sessionRef.current;
+		if (!current) return;
+		patch({ screenshots: current.screenshots.filter((s) => s.id !== id) });
+	}
+	function enqueueStt(blob) {
+		const chunkStarted = chunkStartRef.current;
+		chunkStartRef.current = Date.now();
+		const startedAt = sessionRef.current?.startedAt ?? chunkStarted;
+		const t0 = Math.max(0, chunkStarted - startedAt);
+		setSttPending((n) => n + 1);
+		sttChain.current = sttChain.current.then(async () => {
+			const live = sessionRef.current;
+			if (!live) return;
+			try {
+				const stt = await transcribeFile(blob, live.language || "en", t0);
+				if (!stt.ok || !stt.text) return;
+				const firstStt = !usedStt.current;
+				usedStt.current = true;
+				const latest = sessionRef.current;
+				if (!latest) return;
+				const incoming = stt.segments ?? [];
+				const segs = (firstStt ? incoming : [...latest.segments, ...incoming]).sort((a, b) => a.t - b.t);
+				await patch({
+					segments: segs,
+					transcriptText: segs.map((s) => s.text).join(" ").trim() || (firstStt ? stt.text : `${latest.transcriptText} ${stt.text}`.trim())
+				});
+			} catch {} finally {
+				setSttPending((n) => Math.max(0, n - 1));
+			}
+		});
+	}
+	async function beginCapture(kind) {
+		const current = sessionRef.current;
+		if (!current) return;
+		try {
+			if (kind === "display" && current.url) window.open(current.url, "_blank", "noopener,noreferrer");
+			const handle = kind === "display" ? await startDisplayCapture({
+				chunkMs: LIVE_CHUNK_MS,
+				onAudioChunk: (blob) => enqueueStt(blob)
+			}) : await startMicCapture({
+				chunkMs: LIVE_CHUNK_MS,
+				onAudioChunk: (blob) => enqueueStt(blob)
+			});
+			captureRef.current = handle;
+			setCaptureKind(kind);
+			if (kind === "display" && videoRef.current) {
+				videoRef.current.srcObject = handle.stream;
+				await videoRef.current.play().catch(() => void 0);
+			}
+			setPreviewOn(true);
+			if (handle.stream.getAudioTracks().length === 0) toast.message(kind === "display" ? "Share tab audio is off" : "No microphone audio", { description: kind === "display" ? "In the browser picker, choose the meeting tab and enable audio." : "Allow microphone access so the session can be written down." });
+			meterRef.current?.();
+			meterRef.current = startLevelMonitor(handle.stream, setLevel);
+			try {
+				wakeLockRef.current = await navigator.wakeLock?.request("screen") ?? null;
+			} catch {
+				wakeLockRef.current = null;
+			}
+			handle.stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+				stopListening();
+			});
+			handle.stream.getAudioTracks()[0]?.addEventListener("ended", () => {
+				if (kind === "mic") stopListening();
+			});
+			const startedAt = Date.now();
+			chunkStartRef.current = startedAt;
+			usedStt.current = false;
+			await patch({
+				status: "listening",
+				startedAt,
+				source: "live"
+			});
+			setElapsed(0);
+			timerRef.current = window.setInterval(() => {
+				setElapsed(Date.now() - startedAt);
+			}, 250);
+			if (kind === "mic" && speechSupported()) speechRef.current = startSpeechRecognition(speechLang(current.language), {
+				onFinal: (text) => {
+					if (usedStt.current) {
+						setInterim("");
+						return;
+					}
+					const live = sessionRef.current;
+					if (!live) return;
+					const seg = {
+						id: crypto.randomUUID(),
+						t: Date.now() - (live.startedAt ?? Date.now()),
+						text
+					};
+					patch({
+						segments: [...live.segments, seg],
+						transcriptText: `${live.transcriptText} ${text}`.trim()
+					});
+					setInterim("");
+				},
+				onInterim: setInterim,
+				onError: (message) => toast.error(message)
+			});
+			else if (kind === "display") toast.message("Captions appear as the shared tab audio is transcribed.");
+			if (kind === "display") {
+				window.setTimeout(() => takeShot(true), 1800);
+				shotTimerRef.current = window.setInterval(() => {
+					const video = captureRef.current?.video;
+					if (!video) return;
+					const frame = grabImageData(video);
+					if (!frame) return;
+					const { score, next } = sceneScore(lastFrameRef.current, frame);
+					lastFrameRef.current = next;
+					if (score > .11 && Date.now() - lastShotRef.current > 18e3) takeShot(true);
+				}, 1400);
+			}
+		} catch (err) {
+			if ((err instanceof Error ? err.name : "") === "NotAllowedError") toast.error(kind === "display" ? "Screen share was cancelled. Choose the meeting tab and include audio." : "Microphone permission was blocked.");
+			else toast.error("Could not start capture in this browser.");
+		}
+	}
+	async function stopListening() {
+		const current = sessionRef.current;
+		if (!current || current.status !== "listening") {
+			await teardown();
+			return;
+		}
+		const durationMs = Date.now() - (current.startedAt ?? Date.now());
+		setStep("Saving the last of the audio");
+		setProgress(30);
+		speechRef.current?.stop();
+		speechRef.current = null;
+		meterRef.current?.();
+		meterRef.current = null;
+		if (timerRef.current) window.clearInterval(timerRef.current);
+		if (shotTimerRef.current) window.clearInterval(shotTimerRef.current);
+		if (wakeLockRef.current) {
+			await wakeLockRef.current.release().catch(() => void 0);
+			wakeLockRef.current = null;
+		}
+		if (captureRef.current) {
+			await captureRef.current.stop();
+			captureRef.current = null;
+		}
+		setPreviewOn(false);
+		setCaptureKind(null);
+		await sttChain.current.catch(() => void 0);
+		const next = await patch({
+			status: "processing",
+			endedAt: Date.now(),
+			durationMs,
+			notes
+		});
+		if (!next) return;
+		await finishBrief(next, {
+			durationMs,
+			notes
+		});
+	}
+	async function handleUpload(current, file) {
+		await patch({
+			status: "processing",
+			startedAt: Date.now()
+		});
+		setStep("Transcribing the recording");
+		setProgress(40);
+		const stt = await transcribeFile(file, current.language || "en", 0, (label, value) => {
+			setStep(label);
+			setProgress(value);
+		});
+		if (!stt.ok || !stt.text) {
+			await patch({
+				status: "error",
+				error: stt.error ?? "Could not transcribe that file."
+			});
+			toast.error(stt.error ?? "Could not transcribe that file.");
+			startedRef.current = false;
+			return;
+		}
+		let shots = current.screenshots;
+		if (file.type.startsWith("video/")) {
+			setStep("Pulling key frames");
+			setProgress(62);
+			const frames = await framesFromVideoFile(file, 4);
+			shots = [...shots, ...frames.map((dataUrl, i) => ({
+				id: `frame-${i}`,
+				t: i * 6e4,
+				dataUrl,
+				important: true
+			}))].slice(0, 20);
+		}
+		const next = await patch({
+			transcriptText: stt.text,
+			segments: stt.segments ?? [],
+			screenshots: shots,
+			durationMs: stt.durationMs || Math.round((stt.segments?.at(-1)?.t ?? 0) || 0)
+		});
+		if (next) await finishBrief(next, {});
+	}
+	async function finishBrief(current, extras) {
+		startedRef.current = true;
+		const working = {
+			...current,
+			...extras,
+			notes: extras.notes ?? notes,
+			status: "processing"
+		};
+		sessionRef.current = working;
+		await saveSession(working);
+		if (!working.transcriptText.trim()) {
+			await patch({
+				status: "error",
+				error: "No speech was captured. Share the meeting tab with audio, listen from the microphone, or paste a transcript."
+			});
+			toast.error("No speech was captured.");
+			startedRef.current = false;
+			return;
+		}
+		setStep("Explaining the topics");
+		setProgress(78);
+		const { brief, captions } = await produceBrief(working);
+		const screenshots = working.screenshots.map((s, i) => ({
+			...s,
+			caption: captions[i] ?? s.caption
+		}));
+		const readySession = {
+			...working,
+			status: "ready",
+			brief,
+			screenshots,
+			endedAt: working.endedAt ?? Date.now()
+		};
+		sessionRef.current = readySession;
+		await saveSession(readySession);
+		setProgress(100);
+		await navigate({
+			to: "/brief/$id",
+			params: { id: readySession.id }
+		});
+	}
+	async function retryBrief() {
+		const current = sessionRef.current;
+		if (!current?.transcriptText.trim()) return;
+		startedRef.current = true;
+		await finishBrief(current, {});
+	}
+	if (!ready) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppShell, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", {
+		className: "mx-auto max-w-xl px-4 py-20 text-center text-sm text-muted-foreground",
+		children: "Loading session…"
+	}) });
+	if (!session) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppShell, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
+		className: "mx-auto max-w-xl px-4 py-20 text-center",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
+				className: "font-serif text-3xl",
+				children: "Session not found"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-2 text-sm text-muted-foreground",
+				children: "It may have been cleared from this device."
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+				asChild: true,
+				className: "mt-6",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Link, {
+					to: "/",
+					children: "Back home"
+				})
+			})
+		]
+	}) });
+	const listening = session.status === "listening";
+	const processing = session.status === "processing";
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppShell, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
+		className: "mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+			className: "flex flex-col gap-4",
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "text-xs font-medium tracking-[0.16em] text-brand uppercase",
+						children: platformLabel(session.platform)
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
+						className: "mt-1 font-serif text-3xl sm:text-4xl",
+						children: session.title
+					}),
+					session.url ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+						href: session.url,
+						target: "_blank",
+						rel: "noreferrer",
+						className: "mt-2 inline-flex h-11 items-center gap-1.5 text-sm text-brand hover:underline",
+						children: ["Open meeting", /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExternalLink, { className: "size-3.5" })]
+					}) : null
+				] }),
+				embedded && !listening && !processing ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "rounded-xl bg-paper-deep px-4 py-3 text-sm",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "font-medium",
+							children: "Screen sharing works best in its own window."
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "mt-1 text-muted-foreground",
+							children: "Open the listener in a new tab, then share the meeting tab from there."
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+							variant: "outline",
+							className: "mt-3",
+							onClick: () => window.open(window.location.href, "_blank", "noopener"),
+							children: "Open listener in a new tab"
+						})
+					]
+				}) : null,
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Card, {
+					className: "overflow-hidden rounded-xl p-2",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "relative aspect-video overflow-hidden rounded-lg bg-primary",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", {
+								ref: videoRef,
+								className: `h-full w-full object-cover ${previewOn && captureKind === "display" ? "opacity-100" : "opacity-0"}`,
+								muted: true,
+								playsInline: true
+							}),
+							previewOn && captureKind === "mic" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center text-primary-foreground",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "font-serif text-2xl",
+										children: "Listening from this microphone"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "h-2 w-48 overflow-hidden rounded-full bg-primary-foreground/15",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "h-full rounded-full bg-primary-foreground transition-[width] duration-150",
+											style: { width: `${Math.max(6, Math.round(level * 100))}%` }
+										})
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "max-w-sm text-sm text-primary-foreground/70",
+										children: "Place this device near the speaker. Attach screenshots below if you want slides in the PDF."
+									})
+								]
+							}) : null,
+							!previewOn ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-primary-foreground",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "font-serif text-2xl",
+									children: "Waiting to listen"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "max-w-sm text-sm text-primary-foreground/70",
+									children: "Share the meeting tab — not this page — and turn on tab audio, or listen from this microphone if the call is on another device."
+								})]
+							}) : null,
+							listening ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "absolute top-3 left-3 flex items-center gap-2 rounded-full bg-background/90 px-3 py-1 text-xs font-medium text-live",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "size-1.5 animate-pulse rounded-full bg-live" }), "Listening"]
+							}) : null,
+							listening && captureKind === "display" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "absolute right-3 bottom-3 left-3",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "h-1 overflow-hidden rounded-full bg-primary-foreground/20",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "h-full rounded-full bg-primary-foreground transition-[width] duration-150",
+										style: { width: `${Math.max(4, Math.round(level * 100))}%` }
+									})
+								})
+							}) : null
+						]
+					})
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-wrap items-center gap-3",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "font-mono text-3xl tracking-tight tabular-nums",
+						children: formatClock(listening ? elapsed : session.durationMs)
+					}), listening ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+						variant: "live",
+						onClick: () => void stopListening(),
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Square, { className: "size-3.5 fill-current" }), "Stop and write PDF"]
+					}), captureKind === "display" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+						variant: "outline",
+						onClick: () => takeShot(true),
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { className: "size-4" }), "Keep this screen"]
+					}) : null] }) : processing ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Badge, {
+						variant: "brand",
+						children: "Writing the briefing"
+					}) : session.status === "error" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex flex-col gap-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-sm text-destructive",
+							children: session.error
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex flex-wrap gap-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+									onClick: () => void beginCapture("display"),
+									children: "Try sharing the tab"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+									variant: "outline",
+									onClick: () => void beginCapture("mic"),
+									children: "Try the microphone"
+								}),
+								session.transcriptText.trim() ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+									variant: "outline",
+									onClick: () => void retryBrief(),
+									children: "Write briefing from what we have"
+								}) : null
+							]
+						})]
+					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex flex-wrap gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+							onClick: () => void beginCapture("display"),
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MonitorUp, { className: "size-4" }), "Share meeting tab"]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+							variant: "outline",
+							onClick: () => void beginCapture("mic"),
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Mic, { className: "size-4" }), "Listen from microphone"]
+						})]
+					})]
+				}),
+				processing ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-col gap-2",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2 text-sm text-muted-foreground",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LoaderCircle, { className: "size-4 animate-spin" }), step || "Working"]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Progress, { value: progress })]
+				}) : null,
+				!listening && !processing && session.status !== "error" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
+					className: "grid gap-2 text-sm text-muted-foreground",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "1. Join the meeting in another tab (Open meeting above)." }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "2. Click Share meeting tab and pick that tab — not this page." }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "3. Enable “Share tab audio” in the picker." }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "4. Or use the microphone if the call is on a phone sitting nearby." }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "5. When the call ends, stop — the PDF is written for you." })
+					]
+				}) : null,
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-col gap-2",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, {
+						htmlFor: "session-notes",
+						children: "Your notes (optional)"
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Textarea, {
+						id: "session-notes",
+						className: "min-h-24",
+						placeholder: "Names, a link you spotted, anything you want in the PDF…",
+						value: notes,
+						onChange: (e) => {
+							setNotes(e.target.value);
+							patch({ notes: e.target.value });
+						},
+						disabled: processing
+					})]
+				}),
+				!processing ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileDrop, {
+					accept: "image/*,video/mp4,video/webm",
+					label: "Attach a screenshot",
+					hint: "Drop a slide, photo, or short clip to keep in the PDF",
+					onFile: (file) => void attachImage(file),
+					className: "min-h-20"
+				}) : null,
+				session.screenshots.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "flex gap-2 overflow-x-auto pb-1",
+					children: session.screenshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "relative shrink-0",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+							src: s.dataUrl,
+							alt: s.caption || `Screen at ${formatDuration(s.t)}`,
+							className: "h-16 w-28 rounded-sm object-cover outline outline-1 -outline-offset-1 outline-foreground/10"
+						}), !processing ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							"aria-label": "Remove screenshot",
+							className: "absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-background/90 text-foreground",
+							onClick: () => removeShot(s.id),
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { className: "size-3" })
+						}) : null]
+					}, s.id))
+				}) : null
+			]
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+			className: "flex min-h-80 flex-col rounded-xl bg-card p-4 shadow-[var(--shadow-border)] sm:p-6",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "mb-3 flex items-baseline justify-between",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+					className: "font-serif text-xl",
+					children: "Live transcript"
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+					className: "text-xs text-muted-foreground tabular-nums",
+					children: [
+						session.segments.length,
+						" lines",
+						sttPending > 0 ? " · transcribing" : ""
+					]
+				})]
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				ref: transcriptRef,
+				className: "flex-1 space-y-3 overflow-y-auto pr-1",
+				children: [
+					session.segments.length === 0 && !interim ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "text-sm text-muted-foreground",
+						children: "Words appear here as they are spoken. After the session they are grouped into topics and a downloadable PDF."
+					}) : null,
+					session.segments.map((seg) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "text-sm leading-relaxed",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "mr-2 font-mono text-[11px] text-brand tabular-nums",
+								children: formatDuration(seg.t)
+							}),
+							seg.speaker ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "mr-1 font-medium",
+								children: seg.speaker
+							}) : null,
+							seg.text
+						]
+					}, seg.id)),
+					interim ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "text-sm text-muted-foreground italic",
+						children: interim
+					}) : null,
+					sttPending > 0 && listening ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "text-xs text-muted-foreground",
+						children: "Writing the latest audio…"
+					}) : null
+				]
+			})]
+		})]
+	}) });
+}
+//#endregion
+export { SessionPage as component };

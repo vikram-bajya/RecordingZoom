@@ -1,0 +1,55 @@
+//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-DaBz6PSy.js
+var tsrStartManifest = () => ({ routes: {
+	__root__: {
+		filePath: "D:/grok/debrief/src/routes/__root.tsx",
+		children: [
+			"/",
+			"/api/transcribe",
+			"/brief/$id",
+			"/session/$id"
+		],
+		preloads: [
+			"/assets/index-BX3igrMQ.js",
+			"/assets/rolldown-runtime-CbXtAM7H.js",
+			"/assets/createLucideIcon-DEHjnloC.js",
+			"/assets/preload-helper-DVAs6igs.js"
+		],
+		scripts: [{ attrs: {
+			type: "module",
+			async: !0,
+			src: "/assets/index-BX3igrMQ.js"
+		} }]
+	},
+	"/": {
+		filePath: "D:/grok/debrief/src/routes/index.tsx",
+		children: void 0,
+		preloads: [
+			"/assets/routes-DhcTiG7Y.js",
+			"/assets/input-U7waHJ22.js",
+			"/assets/use-sessions-Bob5rWOT.js",
+			"/assets/languages-CLMEF_ho.js"
+		]
+	},
+	"/brief/$id": {
+		filePath: "D:/grok/debrief/src/routes/brief/$id.tsx",
+		children: void 0,
+		preloads: [
+			"/assets/_id-4Qb_rl7A.js",
+			"/assets/produce-brief-Bw2g_Thn.js",
+			"/assets/input-U7waHJ22.js",
+			"/assets/use-sessions-Bob5rWOT.js"
+		]
+	},
+	"/session/$id": {
+		filePath: "D:/grok/debrief/src/routes/session/$id.tsx",
+		children: void 0,
+		preloads: [
+			"/assets/_id-vie3VnBR.js",
+			"/assets/produce-brief-Bw2g_Thn.js",
+			"/assets/use-sessions-Bob5rWOT.js",
+			"/assets/languages-CLMEF_ho.js"
+		]
+	}
+} });
+//#endregion
+export { tsrStartManifest };
