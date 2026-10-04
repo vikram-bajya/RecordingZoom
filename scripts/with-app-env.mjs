@@ -143,10 +143,11 @@ function main(argv) {
     ...process.env,
   });
   // Windows cannot spawn `vite` (a .cmd shim) without a shell.
+  // Linux (Vercel) also needs shell:true to resolve node_modules/.bin executables.
   const child = spawn(command, args, {
     stdio: "inherit",
     env,
-    shell: process.platform === "win32",
+    shell: true,
   });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
